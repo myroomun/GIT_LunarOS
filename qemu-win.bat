@@ -1,0 +1,1 @@
+"C:\Program Files\qemu\qemu-system-x86_64.exe" -L . -m 256 -fda "C:\Users\user\workspace\Lunar\Disk.img" -soundhw all -localtime -M pc
