@@ -43,3 +43,24 @@ int kMemCmp(const void* pvDestination, const void* pvSource, int iSize )
 	}
 	return 0;
 }
+
+BOOL kSetInterruptFlag( BOOL bEnableInterrupt )
+{
+	QWORD qwRFLAGS;
+
+	qwRFLAGS = kReadRFLAGS();
+	if( bEnableInterrupt == TRUE )
+	{
+		kEnableInterrupt();
+	}
+	else
+	{
+		kDisableInterrupt();
+	}
+	// 9비트가 인터럽트 비트
+	if( qwRFLAGS & 0x200 )
+	{
+		return TRUE;
+	}
+	return FALSE;
+}

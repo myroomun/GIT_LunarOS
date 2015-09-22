@@ -18,6 +18,7 @@ void Main( void )
 	BYTE bTemp;
 	BYTE bFlags;
 	int i = 0;
+	KEYDATA stData;
 
 	kPrintString( 45, 10, "Pass" );
 	kPrintString( 0 , 11, "Success to enter 64-bit C Kernel" );
@@ -38,7 +39,7 @@ void Main( void )
 
 
 	kPrintString( 0, 15, "Keyboard Activation.........................[    ]" );
-	if( kActivateKeyboard() == TRUE )
+	if( kInitializeKeyboard() == TRUE )
 	{
 		kPrintString(45, 15, "Pass");
 		kChangeKeyboardLED(FALSE, FALSE, FALSE);
@@ -60,20 +61,15 @@ void Main( void )
 
 	while(1)
 	{
-		if( kIsOutputBufferFull() == TRUE )
+		if( kGetKeyFromKeyQueue( &stData ) == TRUE )
 		{
-			bTemp = kGetKeyboardScanCode();
-
-			if(kConvertScanCodeToASCIICode(bTemp, &(vcTemp[0]), &bFlags) == TRUE)
+			if( stData.bFlags & KEY_FLAGS_DOWN )
 			{
-				if ( bFlags & KEY_FLAGS_DOWN )
+				vcTemp[ 0 ] = stData.bASCIICode;
+				kPrintString(i++, 17, vcTemp );
+				if( vcTemp[ 0 ] == '0' )
 				{
-					kPrintString(i++,17,vcTemp);
-
-					if( vcTemp[0] == '0' )
-					{
-						bTemp = bTemp / 0;
-					}
+					bTemp = bTemp / 0;
 				}
 			}
 		}
