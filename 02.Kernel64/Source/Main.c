@@ -8,6 +8,7 @@
 #include "Types.h"
 #include "Keyboard.h"
 #include "Descriptor.h"
+#include "PIC.h"
 
 void kPrintString( int iX, int iY, const char* pcString );
 
@@ -50,6 +51,13 @@ void Main( void )
 			;
 		}
 	}
+
+	kPrintString( 0, 16, "PIC Controller And Interrupt Initialize.....[    ]" );
+	kInitializePIC();
+	kMaskPICInterrupt( 0 );
+	kEnableInterrupt();
+	kPrintString( 45, 16, "Pass");
+
 	while(1)
 	{
 		if( kIsOutputBufferFull() == TRUE )
@@ -60,7 +68,7 @@ void Main( void )
 			{
 				if ( bFlags & KEY_FLAGS_DOWN )
 				{
-					kPrintString(i++,16,vcTemp);
+					kPrintString(i++,17,vcTemp);
 
 					if( vcTemp[0] == '0' )
 					{

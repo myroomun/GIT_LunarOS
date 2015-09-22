@@ -3,6 +3,7 @@
 SECTION .text
 
 global kInPortByte, kOutPortByte, kLoadGDTR, kLoadTR, kLoadIDTR
+global kEnableInterrupt, kDisableInterrupt, kReadRFLAGS
 
 ; param : port
 ; ret : data (in rax)
@@ -47,4 +48,22 @@ kLoadTR:
 ; PARAM : IDT 테이블의 정보를 저장하는 자료구조 어드레스
 kLoadIDTR:
 	lidt	[rdi]
+	ret
+
+; 인터럽트 활성화
+; PARAM : NONE
+kEnableInterrupt:
+	sti
+	ret
+
+; 인터럽트 비활성화
+; PARAM : NONE
+kDisableInterrupt:
+	cli
+	ret
+
+; RFLAGS 레지스터 리드
+kReadRFLAGS:
+	pushfq
+	pop rax
 	ret
