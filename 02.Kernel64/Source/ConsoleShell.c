@@ -9,6 +9,9 @@
 #include "Console.h"
 #include "Keyboard.h"
 #include "Utility.h"
+#include "PIT.h"
+#include "RTC.h"
+#include "AssemblyUtility.h"
 
 
 SHELLCOMMANDENTRY gs_vstCommandTable[] =
@@ -18,7 +21,11 @@ SHELLCOMMANDENTRY gs_vstCommandTable[] =
 		{ "totalram", "Show Total RAM Size", kShowTotalRAMSize },
 		{ "strtod", "String To Decial/Hex Convert", kStringToDecimalHexTest },
 		{ "shutdown", "Shutdown ANd Reboot OS", kShutdown },
-
+		{ "settimer", "Set PIT Controller Counter0, ex)settimer 10(ms) 1(period)", kSetTimer},
+		{ "wait", "Wait ms Using PIT, ex) wait 100(ms)", kWaitUsingPIT },
+		{ "rdtsc", "Read Time Stamp Counter", kReadTimeStampCounter },
+		{ "cpuspeed", "Measure Processor Speed", kMeasureProcessorSpeed },
+		{ "date", "Show Date And Time", kShowDateAndTime },
 };
 
 // 쉘의 메인 루프
@@ -241,4 +248,112 @@ void kShutdown( const char* pcParameterBuffer )
 	kPrintf("Press any key to reboot pc...");
 	kGetCh();
 	kReboot();
+}
+
+void kSetTimer( const char* pcParameterBuffer)
+{
+	char vcParameter[ 100 ];
+	PARAMETERLIST stList;
+	long lValue;
+	BOOL bPeriodic;
+
+	// 파라미터 초기화
+	kInitializeParameter( &stList, pcParameterBuffer );
+
+	// millisecond 추출
+	if( kGetNextParameter( &stList, vcParameter ) == 0 )
+	{
+		kPrintf("ex)settimer 10(ms) 1(period<true/false>)\n");
+		return;
+	}
+	lValue = kAToI( vcParameter, 10 );
+
+	if( kGetNextParameter( &stList, vcParameter) == 0 )
+	{
+		kPrintf("ex)settimer 10(ms) 1(period<true/false>)");
+		return;
+	}
+	bPeriodic = kAToI(vcParameter, 10);
+
+	kInitializePIT(MSTOCOUNT(lValue), bPeriodic );
+	kPrintf("Time = %d ms, Period = %d Change Complete\n", lValue, bPeriodic );
+
+}
+void kWaitUsingPIT( const char* pcParameterBuffer )
+{
+	char vcParameter[ 100 ];
+	int iLength;
+	PARAMETERLIST stList;
+	long lMillisecond;
+	int i;
+
+	// 파라미터 초기화
+	kInitializeParameter( &stList, pcParameterBuffer );
+	if( kGetNextParameter( &stList, vcParameter) == 0 )
+	{
+		kPrintf("ex)wait 100(ms)\n");
+		return;
+	}
+
+	lMillisecond = kAToI( pcParameterBuffer, 10);
+	kPrintf("%d ms Sleep Start...\n",lMillisecond);
+	// 인터럽트를 비활성화 하고 PIT 컨트롤러를 통해 직접 시간 측정
+	kDisableInterrupt();
+	for( i = 0 ; i < lMillisecond/30 ; i++ )
+	{
+		kWaitUsingDirectPIT(MSTOCOUNT(30));
+	}
+
+	kWaitUsingDirectPIT(MSTOCOUNT(lMillisecond % 30));
+	kEnableInterrupt();
+	kPrintf("%d ms Sleep Complete\n",lMillisecond);
+
+	// 타이머 복원
+	kInitializePIT( MSTOCOUNT(1), TRUE );
+
+}
+
+void kReadTimeStampCounter( const char* pcParameterBuffer )
+{
+	QWORD qwTSC;
+	qwTSC = kReadTSC();
+	kPrintf("Time Stamp Counter = %q\n",qwTSC );
+}
+
+void kMeasureProcessorSpeed( const char* pcParameterBuffer )
+{
+	int i;
+	QWORD qwLastTSC, qwTotalTSC = 0;
+
+	kPrintf("Now Measuring.");
+
+	// 10초동안 변화한 타임스탬프 카운터를 이용하여 프로세서의 속도를 간접적으로 측정
+	kDisableInterrupt();
+	for( i = 0 ; i < 200 ; i ++ )
+	{
+		qwLastTSC = kReadTSC();
+		kWaitUsingDirectPIT( MSTOCOUNT( 50 ) ); // 50ms * 200 = 10000ms = 10sec
+		qwTotalTSC += kReadTSC() - qwLastTSC;
+
+		kPrintf(".");
+	}
+	kInitializePIT( MSTOCOUNT( 1 ), TRUE );
+	kEnableInterrupt();
+
+	kPrintf("\nCPU Speed = %d MHz\n", qwTotalTSC / 10 / 1000 / 1000);
+}
+
+void kShowDateAndTime( const char* pcParameterBuffer )
+{
+	BYTE bSecond, bMinute, bHour;
+	BYTE bDayOfWeek, bDayOfMonth, bMonth;
+	WORD wYear;
+
+	// RTC 컨트롤러에서 시간 및 일자를 읽음
+
+	kReadRTCTime( &bHour, &bMinute, &bSecond );
+	kReadRTCDate( &wYear, &bMonth, &bDayOfMonth, &bDayOfWeek );
+
+	kPrintf("Date: %d/%d/%d %s ",wYear,bMonth,bDayOfMonth,kConvertDayOfWeekToString(bDayOfWeek));
+	kPrintf( "Time: %d:%d:%d\n", bHour, bMinute, bSecond );
 }

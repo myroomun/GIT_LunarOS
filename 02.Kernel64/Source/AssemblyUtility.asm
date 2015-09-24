@@ -4,6 +4,7 @@ SECTION .text
 
 global kInPortByte, kOutPortByte, kLoadGDTR, kLoadTR, kLoadIDTR
 global kEnableInterrupt, kDisableInterrupt, kReadRFLAGS
+global kReadTSC
 
 ; param : port
 ; ret : data (in rax)
@@ -66,4 +67,13 @@ kDisableInterrupt:
 kReadRFLAGS:
 	pushfq
 	pop rax
+	ret
+
+; 타임스탬프 카운터를 읽어서 반환 (RDX <= 32비트 / RAX <= 32비트)
+kReadTSC:
+	push rdx
+	rdtsc
+	shl rdx, 32
+	or rax, rdx
+	pop rdx
 	ret
