@@ -11,6 +11,8 @@
 #include "PIC.h"
 #include "Console.h"
 #include "ConsoleShell.h"
+#include "PIT.h"
+#include "Task.h"
 
 void kPrintString( int iX, int iY, const char* pcString );
 
@@ -45,6 +47,12 @@ void Main( void )
 	kCheckTotalRAMSize();
 	kSetCursor( 45, iCursorY++);
 	kPrintf("Pass], Size = %d MB\n", kGetTotalRAMSize());
+
+	kPrintf("TCB Pool And Scheduler Initialize...........[Pass]\n" );
+	iCursorY++;
+	kInitializeScheduler();
+	// 1ms 당 인터럽트 발생
+	kInitializePIT( MSTOCOUNT(1), 1 );
 
 	kPrintf("Keyboard Activation.........................[    ]" );
 	if( kInitializeKeyboard() == TRUE )

@@ -8,7 +8,9 @@
 #ifndef ASSEMBLYUTILITY_H_
 #define ASSEMBLYUTILITY_H_
 
+
 #include "Types.h"
+#include "Task.h"
 
 BYTE kInPortByte( WORD wPort );
 void kOutPortByte( WORD wPort, BYTE bData );
@@ -19,5 +21,6 @@ void kEnableInterrupt( void );
 void kDisableInterrupt( void );
 QWORD kReadRFLAGS( void );
 QWORD kReadTSC( void );
+void kSwitchContext( CONTEXT* pstCurrentContext, CONTEXT* pstNextCOntext );
 
 #endif /* ASSEMBLYUTILITY_H_ */

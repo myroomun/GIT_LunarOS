@@ -5,6 +5,7 @@ SECTION .text
 global kInPortByte, kOutPortByte, kLoadGDTR, kLoadTR, kLoadIDTR
 global kEnableInterrupt, kDisableInterrupt, kReadRFLAGS
 global kReadTSC
+global kSwitchContext
 
 ; param : port
 ; ret : data (in rax)
@@ -77,3 +78,116 @@ kReadTSC:
 	or rax, rdx
 	pop rdx
 	ret
+
+; 태스크 관련 어셈블리 함수
+%macro KSAVECONTEXT 0	;파라미터를 받지 않는 매크로 정의
+	; RBP 레지스터부터 GS 세그먼트 셀렉터까지 모두 스택에 삽입
+	push rbp
+	push rax
+	push rbx
+	push rcx
+	push rdx
+	push rdi
+	push rsi
+	push r8
+	push r9
+	push r10
+	push r11
+	push r12
+	push r13
+	push r14
+	push r15
+
+	; DS와 AX는 push 접근 불가
+	mov ax, ds
+	push rax
+	mov ax, es
+	push rax
+	push fs
+	push gs
+
+%endmacro	; 매크로 끝
+
+; 콘택스트 복원 매크로
+%macro KLOADCONTEXT 0
+	pop gs
+	pop fs
+	pop rax
+	mov es, ax
+	pop rax
+	mov ds, ax
+
+	pop r15
+	pop r14
+	pop r13
+	pop r12
+	pop r11
+	pop r10
+	pop r9
+	pop r8
+	pop rsi
+	pop rdi
+	pop rdx
+	pop rcx
+	pop rbx
+	pop rax
+	pop rbp
+%endmacro
+
+;; 현재 컨텍스트 저장 및 넥스트 택스트 복구
+;; param : current context, next context
+kSwitchContext:
+	push rbp
+	mov rbp, rsp	; rbp: pushed rbp, rbp + 8 : retn addr
+
+	;; current context가 null 이면 컨텍스트 저장 불필요
+	pushfq	; cmp 결과로 flag 변경하는것 막기
+	cmp rdi, 0
+	je LoadContext
+	popfq
+
+	; 현재 컨텍스트 저장
+	push rax		; 사용할 rax 저장
+
+	;; ss, rsp, rflags, cs, rip 레지스터 순으로 저장
+	;; ss 저장
+	mov ax, ss
+	mov qword[ rdi + (23*8) ], rax
+	;; rsp 저장
+	;; rsp는 rbp에 저장되어 있는데 함수에 들어오고 retn addr push 및 push rbp 때문에 16이 감소됨. 즉 16을 증가시킴
+	mov rax, rbp
+	add rax, 16		; mov rbp, rsp 시기에서의 rsp + 16
+	mov qword[ rdi + (22*8) ], rax
+
+	;; flags 저장
+	pushfq
+	pop rax
+	mov qword[ rdi + (21*8) ], rax
+
+	;; cs 레지스터 저장
+	mov ax, cs
+	mov qword[ rdi + (20*8) ], rax
+
+	;; return address 저장을 해야 하는데 저장된 retn 주소가 컨텍스트 복구 후 수행될 위치를 뜻한다.
+	mov rax, qword[ rbp + 8 ]
+	mov qword[ rdi + (19*8) ], rax
+
+	; 저장한 레지스터를 복구
+	pop rax
+	pop rbp ; 스택 프레임 형성 전의 rbp 복구
+
+	;들어온 파라미터 안의 레지스터 배열에 저장하기 위해 rsp 변경
+	add rdi, (19*8)		; stContext 내부 레지스터 24개 에서 상위 5개를 이미 채움
+	mov rsp, rdi
+	sub rdi, (19*8)
+
+	; 나머지 레지스터를 모두 CONTEXT 자료구조에 저장
+	KSAVECONTEXT
+
+	;; 다음 태스크의 콘텍스트 복원
+LoadContext:
+	mov rsp, rsi		;rsp에 rsi로 들어온 콘텍스트 자료구조 저장 (NextContext)
+
+	; context 자료구조에서 레지스터를 복원
+	KLOADCONTEXT
+	iretq				;현 stack에서 나머지 남은 자료는 RIP, CS, RFLAGS, RSP, SS 인데 이는 iretq 에 의해 제자리로 들어간다.
