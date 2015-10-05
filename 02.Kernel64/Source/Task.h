@@ -56,6 +56,27 @@
 // 허용된 태스크 가동시간(5ms)
 #define TASK_PROCESSORTIME		5
 
+
+// 준비된 멀티큐 갯수
+#define TASK_MAXREADYLISTCOUNT	5
+
+// 태스크 우선순위
+#define TASK_FLAGS_HIGHEST		0
+#define TASK_FLAGS_HIGH			1
+#define TASK_FLAGS_MEDIUM		2
+#define TASK_FLAGS_LOW			3
+#define TASK_FLAGS_LOWEST		4
+#define TASK_FLAGS_WAIT			0xFF
+
+// 태스크의 플래그
+#define TASK_FLAGS_ENDTASK		0x8000000000000000
+#define TASK_FLAGS_IDLE			0x0800000000000000
+
+// 함수 매크로
+#define GETPRIORITY( x )		( ( x ) & 0xFF )
+#define SETPRIORITY( x, priority )	( ( x ) = ( ( x ) & 0xFFFFFFFFFFFFFF00 ) | ( priority ) )
+#define GETTCBOFFSET( x )		( ( x ) & 0xFFFFFFFF )
+
 // 구조체
 #pragma pack(push, 1)
 
@@ -99,7 +120,20 @@ typedef struct kSchedulerStruct
 	int iProcessorTime;
 
 	// 실행할 태스크가 준비중인 리스트
-	LIST stReadyList;
+	LIST vstReadyList[ TASK_MAXREADYLISTCOUNT ];
+
+	// 실행할 태스크가 준비중인 리스트
+	LIST stWaitList;
+
+	// 각 우선순위별로 태스크를 실행한 횟수를 저장하는 자료구조
+	int viExecuteCount[ TASK_MAXREADYLISTCOUNT ];
+
+	// 프로세서 부하를 계산
+	QWORD qwProcessLoad;
+
+	// 유휴 태스크가 사용한 시간
+	QWORD qwSpendProcessorTimeInIdleTask;
+
 } SCHEDULER;
 
 #pragma pack( pop )
@@ -117,11 +151,24 @@ void kInitializeScheduler( void );
 void kSetRunningTask( TCB* pstTask );
 TCB* kGetRunningTask( void );
 TCB* kGetNextTaskToRun( void );
-void kAddTaskToReadyList( TCB* pstTask );
+BOOL kAddTaskToReadyList( TCB* pstTask );
 void kSchedule( void );
 BOOL kScheduleInInterrupt( void );
 void kDecreaseProcessorTime( void );
 BOOL kIsProcessorTimeExpired( void );
+TCB* kRemoveTaskFromReadyList( QWORD qwTaskID );
+BOOL kChangePriority( QWORD qwID, BYTE bPriority );
+BOOL kEndTask( QWORD qwTaskID );
+void kExitTask( void );
+int kGetReadyTaskCount( void );
+int kGetTaskCount( void );
+TCB* kGetTCBInTCBPool( int iOffset );
+BOOL kIsTaskExist( QWORD qwID );
+QWORD kGetProcessorLoad( void );
 
+
+// 유휴 태스크 관련
+void kIdleTask( void );
+void kHaltProcessorByLoad( void );
 
 #endif /* TASK_H_ */

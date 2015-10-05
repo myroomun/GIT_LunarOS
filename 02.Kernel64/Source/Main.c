@@ -78,6 +78,8 @@ void Main( void )
 	kSetCursor( 45, iCursorY++);
 	kPrintf("Pass\n");
 
+
+	kCreateTask( TASK_FLAGS_LOWEST | TASK_FLAGS_IDLE, (QWORD) kIdleTask );
 	kStartConsoleShell();
 }
 void kPrintString( int iX, int iY, const char* pcString )

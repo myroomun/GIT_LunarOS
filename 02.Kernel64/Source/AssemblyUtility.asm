@@ -5,7 +5,7 @@ SECTION .text
 global kInPortByte, kOutPortByte, kLoadGDTR, kLoadTR, kLoadIDTR
 global kEnableInterrupt, kDisableInterrupt, kReadRFLAGS
 global kReadTSC
-global kSwitchContext
+global kSwitchContext, kHlt
 
 ; param : port
 ; ret : data (in rax)
@@ -191,3 +191,9 @@ LoadContext:
 	; context 자료구조에서 레지스터를 복원
 	KLOADCONTEXT
 	iretq				;현 stack에서 나머지 남은 자료는 RIP, CS, RFLAGS, RSP, SS 인데 이는 iretq 에 의해 제자리로 들어간다.
+
+;; 프로세서를 쉬게 함
+kHlt:
+	hlt
+	hlt
+	ret

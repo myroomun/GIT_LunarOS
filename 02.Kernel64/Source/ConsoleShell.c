@@ -12,6 +12,7 @@
 #include "PIT.h"
 #include "RTC.h"
 #include "AssemblyUtility.h"
+#include "Task.h"
 
 
 SHELLCOMMANDENTRY gs_vstCommandTable[] =
@@ -27,6 +28,10 @@ SHELLCOMMANDENTRY gs_vstCommandTable[] =
 		{ "cpuspeed", "Measure Processor Speed", kMeasureProcessorSpeed },
 		{ "date", "Show Date And Time", kShowDateAndTime },
 		{ "createtask", "Create Task, ex) createtask 1(type) 10(count)", kCreateTestTask },
+		{ "changepriority", "Change Task Priority, ex) changepriority 1(ID) 2(Priority)", kChangeTaskPriority },
+		{ "tasklist", "Show Task List", kShowTaskList },
+		{ "killtask", "End Task ex) killtask 1(ID)", kKillTask },
+		{ "cpuload", "show Processor Load", kCPULoad },
 };
 
 // 쉘의 메인 루프
@@ -363,7 +368,7 @@ void kShowDateAndTime( const char* pcParameterBuffer )
 void kTestTask1(void)
 {
     BYTE bData;
-    int i = 0, iX = 0, iY = 0, iMargin;
+    int i = 0, iX = 0, iY = 0, iMargin, j;
     CHARACTER* pstScreen = ( CHARACTER* ) CONSOLE_VIDEOMEMORYADDRESS;
     TCB* pstRunningTask;
 
@@ -372,7 +377,7 @@ void kTestTask1(void)
     iMargin = ( pstRunningTask->stLink.qwID & 0xFFFFFFFF ) % 10;
 
     // 화면 네 귀퉁이를 돌면서 문자 출력
-    while( 1 )
+    for( j = 0 ; j < 20000 ; j++ )
     {
         switch( i )
         {
@@ -415,8 +420,10 @@ void kTestTask1(void)
         bData++;
 
         // 다른 태스크로 전환
-        kSchedule();
+        //kSchedule();
     }
+
+    kExitTask();
 }
 void kTestTask2(void)
 {
@@ -440,7 +447,7 @@ void kTestTask2(void)
         i++;
 
         // 다른 태스크로 전환
-        kSchedule();
+        //kSchedule();
     }
 }
 void kCreateTestTask( const char* pcParameterBuffer )
@@ -461,7 +468,7 @@ void kCreateTestTask( const char* pcParameterBuffer )
 	case 1:
 		for( i = 0 ; i < kAToI( vcCount, 10) ; i++ )
 		{
-			if( kCreateTask(0, (QWORD) kTestTask1 ) == NULL )
+			if( kCreateTask(TASK_FLAGS_LOW, (QWORD) kTestTask1 ) == NULL )
 			{
 				break;
 			}
@@ -473,7 +480,7 @@ void kCreateTestTask( const char* pcParameterBuffer )
 	default:
 		for( i = 0 ; i < kAToI( vcCount, 10) ; i++ )
 		{
-			if( kCreateTask(0, (QWORD) kTestTask2 ) == NULL )
+			if( kCreateTask(TASK_FLAGS_LOW, (QWORD) kTestTask2 ) == NULL )
 			{
 				break;
 			}
@@ -482,4 +489,100 @@ void kCreateTestTask( const char* pcParameterBuffer )
 		break;
 	}
 
+}
+
+static void kChangeTaskPriority( const char* pcParameterBuffer )
+{
+	PARAMETERLIST stList;
+	char vcID[ 30 ];
+	char vcPriority[ 30 ];
+	QWORD qwID;
+	BYTE bPriority;
+
+	kInitializeParameter( &stList, pcParameterBuffer );
+	kGetNextParameter( &stList, vcID );
+	kGetNextParameter( &stList, vcPriority );
+
+	if( kMemCmp( vcID, "0x", 2 ) == 0)
+	{
+		qwID = kAToI( vcID + 2, 16);
+	}
+	else
+	{
+		qwID = kAToI( vcID, 10 );
+	}
+	bPriority = kAToI( vcPriority, 10 );
+
+	kPrintf( "Change Task Priority ID [0x%q] Priority [%d]",qwID, bPriority );
+	if( kChangePriority( qwID, bPriority ) == TRUE )
+	{
+		kPrintf("Success\n");
+	}
+	else
+	{
+		kPrintf("Fail\n");
+	}
+}
+
+static void kShowTaskList( const char* pcParameterBufffer )
+{
+	int i;
+	TCB* pstTCB;
+	int iCount = 0;
+
+	kPrintf("================ Task Total Count [%d] ===============\n", kGetTaskCount());
+	for( i = 0 ; i < TASK_MAXCOUNT ; i++ )
+	{
+		pstTCB = kGetTCBInTCBPool( i );
+		// 0이 아니면 사용중인 TCB이다
+		if( ( pstTCB->stLink.qwID >> 32 ) != 0 )
+		{
+			if( (iCount != 0) && ((iCount % 10) == 0 ))
+			{
+				kPrintf("Press any key to continue... ('q' is to exit)");
+				if( kGetCh() == 'q' )
+				{
+					kPrintf("\n");
+					break;
+				}
+				kPrintf("\n");
+			}
+			kPrintf("[%d] Task ID[0x%Q], Priority[%d], Flags[0x%Q]\n", 1+iCount++, pstTCB->stLink.qwID, GETPRIORITY(pstTCB->qwFlags), pstTCB->qwFlags);
+		}
+	}
+}
+
+static void kKillTask( const char* pcParameterBuffer )
+{
+	PARAMETERLIST stList;
+	char vcID[ 30 ];
+	QWORD qwID;
+
+	kInitializeParameter( &stList, pcParameterBuffer );
+	kGetNextParameter( &stList, vcID );
+
+	// 태스크를 종료
+	if( kMemCmp( vcID, "0x", 2 ) == 0 )
+	{
+		qwID = kAToI( vcID + 2, 16 );
+	}
+	else
+	{
+		qwID = kAToI( vcID, 10 );
+	}
+
+	kPrintf("Kill Task ID [0x%q]", qwID);
+	if( kEndTask( qwID ) == TRUE )
+	{
+		kPrintf("Success\n");
+	}
+	else
+	{
+		kPrintf("Fail\n");
+	}
+}
+
+static void kCPULoad( const char* pcParameterBuffer )
+{
+	kPrintf("Processor Load : %d%%\n", kGetProcessorLoad() );
 }

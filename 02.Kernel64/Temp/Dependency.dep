@@ -1,5 +1,6 @@
 Task.o: ../Source/Task.c ../Source/Task.h ../Source/Types.h \
- ../Source/List.h ../Source/Descriptor.h ../Source/types.h
+ ../Source/List.h ../Source/Descriptor.h ../Source/types.h \
+ ../Source/Utility.h
 RTC.o: ../Source/RTC.c ../Source/RTC.h ../Source/Types.h
 Keyboard.o: ../Source/Keyboard.c ../Source/types.h \
  ../Source/AssemblyUtility.h ../Source/Types.h ../Source/Task.h \

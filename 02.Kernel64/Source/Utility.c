@@ -359,3 +359,12 @@ int kVSPrintf( char* pcBuffer, const char* pcFormatString, va_list ap )
 	pcBuffer[iBufferIndex] = '\0';
 	return iBufferIndex;
 }
+
+/**
+ *  Tick Count¸¦ ¹ÝÈ¯
+ */
+QWORD kGetTickCount( void )
+{
+    return g_qwTickCount;
+}
+
