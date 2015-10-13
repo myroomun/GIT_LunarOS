@@ -79,7 +79,7 @@ void Main( void )
 	kPrintf("Pass\n");
 
 
-	kCreateTask( TASK_FLAGS_LOWEST | TASK_FLAGS_IDLE, (QWORD) kIdleTask );
+	kCreateTask( TASK_FLAGS_LOWEST | TASK_FLAGS_IDLE | TASK_FLAGS_SYSTEM | TASK_FLAGS_THREAD , 0, 0, (QWORD) kIdleTask );
 	kStartConsoleShell();
 }
 void kPrintString( int iX, int iY, const char* pcString )

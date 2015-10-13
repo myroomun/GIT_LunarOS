@@ -8,6 +8,7 @@
 #include "AssemblyUtility.h"
 #include "Keyboard.h"
 #include "Queue.h"
+#include "Synchronization.h"
 
 BOOL kIsOutputBufferFull(void) // 출력 버퍼에 내용이 있는가?
 {
@@ -502,15 +503,15 @@ BOOL kConvertScanCodeAndPutQueue( BYTE bScanCode )
 {
 	KEYDATA stData;
 	BOOL bResult;
-	BOOL bPreviousInterrupt;
+	BOOL bPreviousFlag;
 
 	stData.bScanCode = bScanCode;
 
 	if( kConvertScanCodeToASCIICode( bScanCode, &( stData.bASCIICode ), &( stData.bFlags ) ) )
 	{
-		bPreviousInterrupt = kSetInterruptFlag( FALSE );
+		bPreviousFlag = kLockForSystemData();
 		bResult = kPutQueue( &gs_stKeyQueue, &stData );
-		kSetInterruptFlag( bPreviousInterrupt );
+		kUnlockForSystemData( bPreviousFlag );
 	}
 
 	return bResult;
@@ -519,17 +520,17 @@ BOOL kConvertScanCodeAndPutQueue( BYTE bScanCode )
 BOOL kGetKeyFromKeyQueue( KEYDATA* pstData )
 {
 	BOOL bResult;
-	BOOL bPreviousInterrupt;
+	BOOL bPreviousFlag;
 
 	if( kIsQueueEmpty( &gs_stKeyQueue ) == TRUE )
 	{
 		return FALSE;
 	}
 
-	bPreviousInterrupt = kSetInterruptFlag( FALSE );
+	bPreviousFlag = kLockForSystemData();
 
 	bResult = kGetQueue( &gs_stKeyQueue, pstData );
 
-	kSetInterruptFlag(bPreviousInterrupt);
+	kUnlockForSystemData( bPreviousFlag );
 	return bResult;
 }

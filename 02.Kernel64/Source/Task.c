@@ -13,15 +13,17 @@
 static SCHEDULER gs_stScheduler;
 static TCBPOOLMANAGER gs_stTCBPoolManager;
 
-void kSetUpTask( TCB* pstTCB, QWORD qwFlags, QWORD qwEntryPointAddress, void* pvStackAddress, QWORD qwStackSize )
+static void kSetUpTask( TCB* pstTCB, QWORD qwFlags, QWORD qwEntryPointAddress, void* pvStackAddress, QWORD qwStackSize )
 {
 	// 콘텍스트 초기화
 	kMemSet( pstTCB->stContext.vgRegister, 0, sizeof(pstTCB->stContext.vgRegister ));
 
 	// 스택에 관련된 RSP, RBP 레지스터 설정
 	// 이때 레지스터는 사용전 레지스터 스택이므로 최상단에 올려준다.
-	pstTCB->stContext.vgRegister[ TASK_RSPOFFSET ] = (QWORD) pvStackAddress + qwStackSize;
-	pstTCB->stContext.vgRegister[ TASK_RBPOFFSET ] = (QWORD) pvStackAddress + qwStackSize;
+	pstTCB->stContext.vgRegister[ TASK_RSPOFFSET ] = (QWORD) pvStackAddress + qwStackSize - 8;
+	pstTCB->stContext.vgRegister[ TASK_RBPOFFSET ] = (QWORD) pvStackAddress + qwStackSize - 8;
+
+	* (QWORD *)( ( QWORD ) pvStackAddress + qwStackSize - 8 ) = (QWORD)kExitTask;
 
 	// 세그먼트 셀렉터 설정 (현재 커널내에서 실행되는 코드이다.)
 	pstTCB->stContext.vgRegister[ TASK_CSOFFSET ] = GDT_KERNELCODESEGMENT;
@@ -45,7 +47,7 @@ void kSetUpTask( TCB* pstTCB, QWORD qwFlags, QWORD qwEntryPointAddress, void* pv
 }
 
 // 태스크 풀과 태스크 관련된 함수들
-void kInitializeTCBPool( void )
+static void kInitializeTCBPool( void )
 {
 	int i;
 
@@ -67,7 +69,7 @@ void kInitializeTCBPool( void )
 }
 
 // TCB를 핟당받는다.
-TCB* kAllocateTCB( void )
+static TCB* kAllocateTCB( void )
 {
 	TCB* pstEmptyTCB;
 	int i;
@@ -98,7 +100,7 @@ TCB* kAllocateTCB( void )
 	return pstEmptyTCB;
 }
 
-void kFreeTCB( QWORD qwID )
+static void kFreeTCB( QWORD qwID )
 {
 	int i;
 
@@ -113,23 +115,61 @@ void kFreeTCB( QWORD qwID )
 }
 
 // 태스크 생성
-TCB* kCreateTask( QWORD qwFlags, QWORD qwEntryPointAddress )
+TCB* kCreateTask( QWORD qwFlags, void* pvMemoryAddress, QWORD qwMemorySize, QWORD qwEntryPointAddress )
 {
-	TCB* pstTask;
+	TCB* pstTask, *pstProcess;
 	void* pvStackAddress;
+	BOOL bPreviousFlag;
 
+	// 아래부분은 TCB를 할당받는 부분으로, Main console shell에 여러번 호출당할 수 있음! (은 솔직히 아직은 아닌듯)
+	bPreviousFlag = kLockForSystemData();
 	pstTask = kAllocateTCB();
 	if( pstTask == NULL )
 	{
+		kUnlockForSystemData( bPreviousFlag );
 		return NULL;
 	}
 
+
+	pstProcess = kGetProcessByThread( kGetRunningTask() );
+
+	if( pstProcess == NULL )
+	{
+		kFreeTCB(pstTask->stLink.qwID);
+		kUnlockForSystemData( bPreviousFlag);
+		return NULL;
+	}
+
+	if( qwFlags & TASK_FLAGS_THREAD )
+	{
+		pstTask->qwParentProcessID = pstProcess->stLink.qwID;
+		pstTask->pvMemoryAddress = pstProcess->pvMemoryAddress;
+		pstTask->qwMemorySize = pstProcess->qwMemorySize;
+
+		kAddListToTail( &( pstProcess->stChildThreadList ), &( pstTask->stThreadLink));
+	}
+	else
+	{
+		pstTask->qwParentProcessID = pstProcess->stLink.qwID;
+		pstTask->pvMemoryAddress = pvMemoryAddress;
+		pstTask->qwMemorySize = qwMemorySize;
+	}
+
 	// 하위 인덱스 비트 * 스택사이즈 + 스택풀베이스
+	pstTask->stThreadLink.qwID = pstTask->stLink.qwID;
+	kUnlockForSystemData( bPreviousFlag );
+
+
 	pvStackAddress = ( void* ) (TASK_STACKPOOLADDRESS + ( TASK_STACKSIZE * GETTCBOFFSET(pstTask->stLink.qwID) ) );
 
-
+	// setup task는 이미 이 부른 함수에 종속적이다.
 	kSetUpTask( pstTask, qwFlags, qwEntryPointAddress, pvStackAddress, TASK_STACKSIZE );
+
+	kInitializeList( &( pstTask->stChildThreadList ) );
+
+	bPreviousFlag = kLockForSystemData();
 	kAddTaskToReadyList( pstTask );
+	kUnlockForSystemData();
 
 	return pstTask;
 }
@@ -140,6 +180,7 @@ TCB* kCreateTask( QWORD qwFlags, QWORD qwEntryPointAddress )
 void kInitializeScheduler( void )
 {
 	int i;
+	TCB* pstTask;
 
 	kInitializeTCBPool();
 
@@ -148,10 +189,18 @@ void kInitializeScheduler( void )
 		kInitializeList( &(gs_stScheduler.vstReadyList[ i ]));
 		gs_stScheduler.viExecuteCount[ i ] = 0;
 	}
+	kInitializeList( &(gs_stScheduler.stWaitList ) );
+
+	pstTask = kAllocateTCB();
 
 	// TCB를 할당받아 실행중인 태스크로 설정, 부팅을 수행한 태스크를 저장할 TCB를 준비
-	gs_stScheduler.pstRunningTask = kAllocateTCB();
-	gs_stScheduler.pstRunningTask->qwFlags = TASK_FLAGS_HIGHEST; // 쉘의 우선도를 높임
+	gs_stScheduler.pstRunningTask = pstTask;
+	pstTask->qwFlags = TASK_FLAGS_HIGHEST | TASK_FLAGS_PROCESS | TASK_FLAGS_SYSTEM; // 쉘의 우선도를 높임
+	pstTask->qwParentProcessID = pstTask->stLink.qwID;
+	pstTask->pvMemoryAddress = (void*) 0x100000;
+	pstTask->qwMemorySize = 0x500000;
+	pstTask->pvStackAddress = (void*) 0x600000;
+	pstTask->qwStackSize = 0x100000;
 
 	//프로세스 사용률 계산 구조 초기화
 	gs_stScheduler.qwSpendProcessorTimeInIdleTask = 0;
@@ -161,16 +210,27 @@ void kInitializeScheduler( void )
 // 현재 수행중인 태스크를 설정
 void kSetRunningTask( TCB* pstTask )
 {
+	BOOL bPreviousFlag;
+
+	bPreviousFlag = kLockForSystemData();
 	gs_stScheduler.pstRunningTask = pstTask;
+	kUnlockForSystemData( bPreviousFlag );
 }
 
 TCB* kGetRunningTask( void )
 {
-	return gs_stScheduler.pstRunningTask;
+	BOOL bPreviousFlag;
+	TCB* pstRunningTask;
+
+	bPreviousFlag = kLockForSystemData();
+	pstRunningTask = gs_stScheduler.pstRunningTask;
+	kUnlockForSystemData(bPreviousFlag);
+
+	return pstRunningTask;
 }
 
 // 태스크 리스트에서 다음으로 실행할 태스크를 얻음
-TCB* kGetNextTaskToRun( void )
+static TCB* kGetNextTaskToRun( void )
 {
 	TCB* pstTarget = NULL;
 	int iTaskCount, i, j;
@@ -205,7 +265,7 @@ TCB* kGetNextTaskToRun( void )
 }
 
 // 태스크를 스케줄러의 준비 리스트에 삽입
-BOOL kAddTaskToReadyList( TCB* pstTask )
+static BOOL kAddTaskToReadyList( TCB* pstTask )
 {
 	BYTE bPriority;
 
@@ -218,7 +278,7 @@ BOOL kAddTaskToReadyList( TCB* pstTask )
 	return TRUE;
 }
 
-TCB* kRemoveTaskFromReadyList(QWORD qwTaskID)
+static TCB* kRemoveTaskFromReadyList(QWORD qwTaskID)
 {
 	TCB* pstTarget;
 	BYTE bPriority;
@@ -242,12 +302,15 @@ TCB* kRemoveTaskFromReadyList(QWORD qwTaskID)
 BOOL kChangePriority( QWORD qwTaskID, BYTE bPriority )
 {
 	TCB* pstTarget;
+	BOOL bPreviousFlag;
 
 	if( bPriority > TASK_MAXREADYLISTCOUNT )
 	{
 		return FALSE;
 	}
 
+	bPreviousFlag = kLockForSystemData();
+	// 인터럽트 스케쥴링 핸들러와 공유된 자료구조를 많이 사용한다.
 	// 현재 실행중인 태스크이면 우선순위만 변경
 	// 나중에 태스크 스위칭이 일어나면 태스크를 레디큐에 넣을때 분류된다.
 	pstTarget = gs_stScheduler.pstRunningTask;
@@ -275,6 +338,7 @@ BOOL kChangePriority( QWORD qwTaskID, BYTE bPriority )
 		}
 
 	}
+	kUnlockForSystemData( bPreviousFlag );
 	return TRUE;
 
 }
@@ -291,13 +355,13 @@ void kSchedule( void )
 	}
 
 	// 전환하는 도충 인터럽트가 발생하여 태스크 전환이 일어나면 곤란!
-	bPreviousFlag = kSetInterruptFlag( FALSE );
+	bPreviousFlag = kLockForSystemData();
 
 	// 실행할 다음 태스크를 얻음
 	pstNextTask = kGetNextTaskToRun();
 	if( pstNextTask == NULL )
 	{
-		kSetInterruptFlag( bPreviousFlag );
+		kUnlockForSystemData(bPreviousFlag);
 		return;
 	}
 
@@ -325,7 +389,7 @@ void kSchedule( void )
 
 	gs_stScheduler.iProcessorTime = TASK_PROCESSORTIME;
 
-	kSetInterruptFlag( bPreviousFlag );
+	kUnlockForSystemData(bPreviousFlag);
 }
 
 // 인터럽트가 발생할 시 다른 태스크 찾기
@@ -333,11 +397,15 @@ BOOL kScheduleInInterrupt( void )
 {
 	TCB* pstRunningTask, * pstNextTask;
 	char* pcContextAddress;
+	BOOL bPreviousFlag;
+
+	bPreviousFlag = kLockForSystemData();
 
 	// 전환할 태스크가 없으면 종료
 	pstNextTask = kGetNextTaskToRun();
 	if( pstNextTask == NULL )
 	{
+		kUnlockForSystemData(bPreviousFlag);
 		return FALSE;
 	}
 
@@ -367,6 +435,9 @@ BOOL kScheduleInInterrupt( void )
 		kMemCpy( &( pstRunningTask->stContext), pcContextAddress, sizeof(CONTEXT) );
 		kAddTaskToReadyList(pstRunningTask);
 	}
+	kUnlockForSystemData(bPreviousFlag);
+
+	//아래부터는 공유자원이 아님
 
 	// 태스크 전환
 	kMemCpy( pcContextAddress, &(pstNextTask->stContext), sizeof(CONTEXT) );
@@ -379,7 +450,10 @@ BOOL kEndTask( QWORD qwTaskID )
 {
 	TCB* pstTarget;
 	BYTE bPriority;
-	\
+	BOOL bPreviousFlag;
+
+	bPreviousFlag = kLockForSystemData();
+
 	pstTarget = gs_stScheduler.pstRunningTask;
 
 	if( pstTarget->stLink.qwID == qwTaskID )
@@ -402,13 +476,17 @@ BOOL kEndTask( QWORD qwTaskID )
 			{
 				pstTarget->qwFlags |= TASK_FLAGS_ENDTASK;
 				SETPRIORITY( pstTarget->qwFlags, TASK_FLAGS_WAIT );
+				kUnlockForSystemData(bPreviousFlag);
+				return TRUE;
 			}
+			kUnlockForSystemData(bPreviousFlag);
 			return FALSE;
 		}
 		pstTarget->qwFlags |= TASK_FLAGS_ENDTASK;
 		SETPRIORITY( pstTarget->qwFlags, TASK_FLAGS_WAIT );
 		kAddListToTail( &(gs_stScheduler.stWaitList), pstTarget );
 	}
+	kUnlockForSystemData(bPreviousFlag);
 	return TRUE;
 }
 
@@ -421,11 +499,16 @@ int kGetReadyTaskCount(void)
 {
 	int iTotalCount = 0;
 	int i;
+	BOOL bPreviousFlag;
+
+	bPreviousFlag = kLockForSystemData();
 
 	for( i = 0 ; i < TASK_MAXREADYLISTCOUNT ; i++ )
 	{
 		iTotalCount += kGetListCount( &(gs_stScheduler.vstReadyList[ i ] ) );
 	}
+
+	kUnlockForSystemData( bPreviousFlag );
 	return iTotalCount;
 }
 
@@ -433,9 +516,13 @@ int kGetReadyTaskCount(void)
 int kGetTaskCount( void )
 {
 	int iTotalCount;
+	BOOL bPreviousFlag;
 
 	iTotalCount = kGetReadyTaskCount();
+
+	bPreviousFlag = kLockForSystemData();
 	iTotalCount += kGetListCount( &(gs_stScheduler.stWaitList) ) + 1;
+	kUnlockForSystemData(bPreviousFlag);
 
 	return iTotalCount;
 }
@@ -470,10 +557,14 @@ QWORD kGetProcessorLoad( void )
 
 void kIdleTask( void )
 {
-	TCB* pstTask;
+	TCB* pstTask, * pstChildThread, * pstProcess;
 	// SpendTickInIdleTask << 누적된 틱카운트 MeasrueTickCount << 틱카운트 재기
 	QWORD qwLastMeasureTickCount, qwLastSpendTickInIdleTask;
 	QWORD qwCurrentMeasureTickCount, qwCurrentSpendTickInIdleTask;
+	BOOL bPreviousFlag;
+	QWORD qwTaskID;
+	int i, iCount;
+	void* pstThreadLink;
 
 	qwLastSpendTickInIdleTask = gs_stScheduler.qwSpendProcessorTimeInIdleTask;
 	qwLastMeasureTickCount = kGetTickCount();
@@ -502,14 +593,59 @@ void kIdleTask( void )
 		{
 			while(1)
 			{
+				bPreviousFlag = kLockForSystemData();
 				// 종료 플래그 프로세스 정리
 				pstTask = kRemoveListFromHeader( &(gs_stScheduler.stWaitList) );
 				if( pstTask == NULL )
 				{
+					kUnlockForSystemData( bPreviousFlag );
 					break;
 				}
+
+				if( pstTask->qwFlags & TASK_FLAGS_PROCESS)
+				{
+					iCount = kGetListCount( &( pstTask->stChildThreadList ) );
+					for( i = 0 ; i < iCount ; i++ )
+					{
+						// 스레드 리스트 안에 있는 스레드를 종료시키기 위해 이 고생을
+						pstThreadLink = (TCB*)kRemoveListFromHeader(&(pstTask->stChildThreadList));
+						if( pstThreadLink == NULL )
+						{
+							break;
+						}
+						pstChildThread = GETTCBFROMTHREADLINK( pstThreadLink );
+						kAddListToTail( &(pstTask->stChildThreadList), &(pstChildThread->stThreadLink));
+						// 태스크 강제종료
+						kEndTask( pstChildThread->stLink.qwID );
+					}
+
+					// 아직 자식 쓰레드가 남아있는가?
+					if( kGetListCount( &( pstTask->stChildThreadList) ) > 0 )
+					{
+						// 만약 자식 스레드가 다른 코어에서 실행되어 바로 종료가 불가능한 경우 때문에 이 과정으로 다시 검사한다.
+						kAddListToTail( &(gs_stScheduler.stWaitList), pstTask);
+						kUnlockForSystemData( bPreviousFlag );
+						continue;
+					}
+					else
+					{
+						// 할당 메모리 삭제
+						// TODO
+					}
+				}
+				else if( pstTask->qwFlags & TASK_FLAGS_THREAD )
+				{
+					pstProcess = kGetProcessByThread( pstTask );
+					if( pstProcess != NULL )
+					{
+						kRemoveList( &(pstProcess->stChildThreadList), pstTask->stLink.qwID);
+					}
+				}
+				qwTaskID = pstTask->stLink.qwID;
+				kFreeTCB(qwTaskID);
+				kUnlockForSystemData( bPreviousFlag );
+
 				kPrintf("IDLE : Task ID[0x%q] is completely ended.\n",pstTask->stLink.qwID);
-				kFreeTCB(pstTask->stLink.qwID);
 			}
 		}
 		kSchedule();
@@ -551,4 +687,24 @@ BOOL kIsProcessorTimeExpired( void )
 		return TRUE;
 	}
 	return FALSE;
+}
+
+static TCB* kGetProcessByThread( TCB* pstThread )
+{
+	TCB* pstProcess;
+
+	if( pstThread->qwFlags & TASK_FLAGS_PROCESS )
+	{
+		return pstThread;
+	}
+
+	// 내가 쓰레드라면
+	pstProcess = kGetTCBInTCBPool( GETTCBOFFSET(pstThread->qwParentProcessID));
+
+	if( ( pstProcess == NULL ) || ( pstProcess->stLink.qwID != pstThread->qwParentProcessID ) )
+	{
+		return NULL;
+	}
+
+	return pstProcess;
 }

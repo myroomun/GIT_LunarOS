@@ -5,7 +5,7 @@ SECTION .text
 global kInPortByte, kOutPortByte, kLoadGDTR, kLoadTR, kLoadIDTR
 global kEnableInterrupt, kDisableInterrupt, kReadRFLAGS
 global kReadTSC
-global kSwitchContext, kHlt
+global kSwitchContext, kHlt, kTestAndSet
 
 ; param : port
 ; ret : data (in rax)
@@ -197,3 +197,19 @@ kHlt:
 	hlt
 	hlt
 	ret
+
+;; 파라미터 : rdi : destination, rsi compare, rdx source
+kTestAndSet:
+	mov rax, rsi
+
+	;; rax와 [rdi]를 비교하여 같으면 dl값을 rdi(dest)에 저장
+	lock cmpxchg byte[ rdi ], dl
+	je SUCCESS
+
+NOTSAME:
+	mov rax, 0x00
+	ret
+SUCCESS:
+	mov rax, 0x01
+	ret
+

@@ -13,6 +13,7 @@
 #include "RTC.h"
 #include "AssemblyUtility.h"
 #include "Task.h"
+#include "Synchronization.h"
 
 
 SHELLCOMMANDENTRY gs_vstCommandTable[] =
@@ -30,8 +31,11 @@ SHELLCOMMANDENTRY gs_vstCommandTable[] =
 		{ "createtask", "Create Task, ex) createtask 1(type) 10(count)", kCreateTestTask },
 		{ "changepriority", "Change Task Priority, ex) changepriority 1(ID) 2(Priority)", kChangeTaskPriority },
 		{ "tasklist", "Show Task List", kShowTaskList },
-		{ "killtask", "End Task ex) killtask 1(ID)", kKillTask },
+		{ "killtask", "End Task ex) killtask 1(ID) or 0xffffffff(All task)", kKillTask },
 		{ "cpuload", "show Processor Load", kCPULoad },
+		{ "testmutex", "Test Mutex Function", kTestMutex },
+		{ "testthread", "Test Thread And Process Function", kTestThread },
+		{ "showmatrix", "Show matrix", kShowMatrix },
 };
 
 // 쉘의 메인 루프
@@ -377,7 +381,7 @@ void kTestTask1(void)
     iMargin = ( pstRunningTask->stLink.qwID & 0xFFFFFFFF ) % 10;
 
     // 화면 네 귀퉁이를 돌면서 문자 출력
-    for( j = 0 ; j < 20000 ; j++ )
+    for( j = 0 ; j <= 20000 ; j++ )
     {
         switch( i )
         {
@@ -468,7 +472,7 @@ void kCreateTestTask( const char* pcParameterBuffer )
 	case 1:
 		for( i = 0 ; i < kAToI( vcCount, 10) ; i++ )
 		{
-			if( kCreateTask(TASK_FLAGS_LOW, (QWORD) kTestTask1 ) == NULL )
+			if( kCreateTask(TASK_FLAGS_LOW | TASK_FLAGS_THREAD , 0, 0, (QWORD) kTestTask1 ) == NULL )
 			{
 				break;
 			}
@@ -480,7 +484,7 @@ void kCreateTestTask( const char* pcParameterBuffer )
 	default:
 		for( i = 0 ; i < kAToI( vcCount, 10) ; i++ )
 		{
-			if( kCreateTask(TASK_FLAGS_LOW, (QWORD) kTestTask2 ) == NULL )
+			if( kCreateTask(TASK_FLAGS_LOW | TASK_FLAGS_THREAD, 0, 0 , (QWORD) kTestTask2 ) == NULL )
 			{
 				break;
 			}
@@ -547,7 +551,8 @@ static void kShowTaskList( const char* pcParameterBufffer )
 				}
 				kPrintf("\n");
 			}
-			kPrintf("[%d] Task ID[0x%Q], Priority[%d], Flags[0x%Q]\n", 1+iCount++, pstTCB->stLink.qwID, GETPRIORITY(pstTCB->qwFlags), pstTCB->qwFlags);
+			kPrintf("[%d] Task ID[0x%Q], Priority[%d], Flags[0x%Q], Thread[%d]\n", 1+iCount++, pstTCB->stLink.qwID, GETPRIORITY(pstTCB->qwFlags), pstTCB->qwFlags, kGetListCount( &(pstTCB->stChildThreadList) ) );
+			kPrintf("    Parent PID[0x%Q], Memory Address[0x%Q], Size[0x%Q]\n", pstTCB->qwParentProcessID, pstTCB->pvMemoryAddress, pstTCB->qwMemorySize );
 		}
 	}
 }
@@ -557,6 +562,8 @@ static void kKillTask( const char* pcParameterBuffer )
 	PARAMETERLIST stList;
 	char vcID[ 30 ];
 	QWORD qwID;
+	TCB* pstTCB;
+	int i;
 
 	kInitializeParameter( &stList, pcParameterBuffer );
 	kGetNextParameter( &stList, vcID );
@@ -571,18 +578,233 @@ static void kKillTask( const char* pcParameterBuffer )
 		qwID = kAToI( vcID, 10 );
 	}
 
-	kPrintf("Kill Task ID [0x%q]", qwID);
-	if( kEndTask( qwID ) == TRUE )
+	if( qwID != 0xFFFFFFFF )
 	{
-		kPrintf("Success\n");
+		pstTCB = kGetTCBInTCBPool( GETTCBOFFSET( qwID ) );
+		qwID = pstTCB->stLink.qwID;
+
+		if( ( ( qwID >> 32 ) != 0 ) && ( ( pstTCB->qwFlags & TASK_FLAGS_SYSTEM) == 0x00 ) )
+		{
+			kPrintf("Kill Task ID [0x%q]", qwID);
+			if( kEndTask( qwID ) == TRUE )
+			{
+				kPrintf("Success\n");
+			}
+			else
+			{
+				kPrintf("Fail\n");
+			}
+		}
+		else
+		{
+			kPrintf("Task does not exist or task is system task\n");
+		}
 	}
 	else
 	{
-		kPrintf("Fail\n");
+		// i 0은 콘솔 1는 유휴 태스크
+		for( i = 0 ; i < TASK_MAXCOUNT; i++ )
+		{
+			pstTCB = kGetTCBInTCBPool( i );
+			qwID = pstTCB->stLink.qwID;
+			// 유효하면
+			if( ( ( qwID >> 32 ) != 0 ) && ( (  pstTCB->qwFlags & TASK_FLAGS_SYSTEM ) == 0x00 ) )
+			{
+				kPrintf("Kill Task ID [0x%q] ",qwID);
+				if( kEndTask( qwID ) == TRUE )
+				{
+					kPrintf("Success\n");
+				}
+				else
+				{
+					kPrintf("Fail\n");
+				}
+			}
+		}
 	}
+
 }
 
 static void kCPULoad( const char* pcParameterBuffer )
 {
 	kPrintf("Processor Load : %d%%\n", kGetProcessorLoad() );
+}
+
+static MUTEX gs_stMutex;
+static volatile QWORD gs_qwAdder;
+
+static void kPrintNumberTask( void )
+{
+	int i;
+	int j;
+	QWORD qwTickCount;
+
+	qwTickCount = kGetTickCount();
+	while( ( kGetTickCount() - qwTickCount < 50 ) )
+	{
+		kSchedule();
+	}
+	// 콘솔셀 메시지 출력하기 위한 대기
+
+	for( i = 0 ; i < 5 ; i++ )
+	{
+		kLock( &(gs_stMutex) );
+		kPrintf( "Task ID [0x%Q] value[%d]\n", kGetRunningTask()->stLink.qwID, gs_qwAdder);
+
+		gs_qwAdder += 1;
+
+		kUnlock( &( gs_stMutex) );
+
+		for( j = 0 ; j < 30000 ; j++);
+	}
+
+	// 모든 태스크가 종료할때까지 1초정도 대기
+	qwTickCount = kGetTickCount();
+	while( ( kGetTickCount() - qwTickCount ) < 1000 )
+	{
+		kSchedule();
+	}
+
+	kExitTask();
+}
+
+static void kTestMutex( const char* pcParameter)
+{
+	int i;
+
+	gs_qwAdder = 1;
+
+	kInitializeMutex( &gs_stMutex );
+
+	for( i = 0 ; i < 3 ; i++ )
+	{
+		kCreateTask( TASK_FLAGS_LOW | TASK_FLAGS_THREAD, 0, 0, (QWORD)kPrintNumberTask );
+	}
+	kPrintf( "Wait Until %d Task End...\n", i);
+	kGetCh();
+}
+static void kCreateThreadTask( void )
+{
+	int i;
+
+	for( i = 0 ; i < 3 ; i++ )
+	{
+		kCreateTask( TASK_FLAGS_LOW | TASK_FLAGS_THREAD, 0, 0, (QWORD) kTestTask2 );
+	}
+	while(1)
+	{
+		kSleep(1);
+	}
+}
+
+static void kTestThread( const char* pcParameterBuffer )
+{
+	TCB* pstProcess;
+
+	pstProcess = kCreateTask( TASK_FLAGS_LOW | TASK_FLAGS_PROCESS, (void*)0xEEEEEEEE, 0x1000, (QWORD) kCreateThreadTask );
+
+	if(pstProcess != NULL )
+	{
+		kPrintf("Process [0x%Q] create Success\n", pstProcess->stLink.qwID);
+	}
+	else
+	{
+		kPrintf("Process Create Fail!\n");
+	}
+}
+static volatile QWORD gs_qwRandomValue = 0;
+
+/**
+ *  임의의 난수를 반환
+ */
+QWORD kRandom( void )
+{
+    gs_qwRandomValue = ( gs_qwRandomValue * 412153 + 5571031 ) >> 16;
+    return gs_qwRandomValue;
+}
+
+/**
+ *  철자를 흘러내리게 하는 스레드
+ */
+static void kDropCharactorThread( void )
+{
+    int iX, iY;
+    int i;
+    char vcText[ 2 ] = { 0, };
+
+    iX = kRandom() % CONSOLE_WIDTH;
+
+    while( 1 )
+    {
+        // 잠시 대기함
+        kSleep( kRandom() % 20 );
+
+        if( ( kRandom() % 20 ) < 16 )
+        {
+            vcText[ 0 ] = ' ';
+            for( i = 0 ; i < CONSOLE_HEIGHT - 1 ; i++ )
+            {
+                kPrintStringXY( iX, i , vcText );
+                kSleep( 50 );
+            }
+        }
+        else
+        {
+            for( i = 0 ; i < CONSOLE_HEIGHT - 1 ; i++ )
+            {
+                vcText[ 0 ] = i + kRandom();
+                kPrintStringXY( iX, i, vcText );
+                kSleep( 50 );
+            }
+        }
+    }
+}
+
+/**
+ *  스레드를 생성하여 매트릭스 화면처럼 보여주는 프로세스
+ */
+static void kMatrixProcess( void )
+{
+    int i;
+
+    for( i = 0 ; i < 300 ; i++ )
+    {
+        if( kCreateTask( TASK_FLAGS_THREAD | TASK_FLAGS_LOW, 0, 0,
+                         ( QWORD ) kDropCharactorThread ) == NULL )
+        {
+            break;
+        }
+
+        kSleep( kRandom() % 5 + 5 );
+    }
+
+    kPrintf( "%d Thread is created\n", i );
+
+    // 키가 입력되면 프로세스 종료
+    kGetCh();
+}
+
+/**
+ *  매트릭스 화면을 보여줌
+ */
+static void kShowMatrix( const char* pcParameterBuffer )
+{
+    TCB* pstProcess;
+
+    pstProcess = kCreateTask( TASK_FLAGS_PROCESS | TASK_FLAGS_LOW, ( void* ) 0xE00000, 0xE00000,
+                              ( QWORD ) kMatrixProcess );
+    if( pstProcess != NULL )
+    {
+        kPrintf( "Matrix Process [0x%Q] Create Success\n" );
+
+        // 태스크가 종료 될 때까지 대기
+        while( ( pstProcess->stLink.qwID >> 32 ) != 0 )
+        {
+            kSleep( 100 );
+        }
+    }
+    else
+    {
+        kPrintf( "Matrix Process Create Fail\n" );
+    }
 }

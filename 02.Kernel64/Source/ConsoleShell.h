@@ -61,5 +61,9 @@ static void kChangeTaskPriority( const char* pcParameterBuffer );
 static void kShowTaskList( const char* pcParameterBuffer );
 static void kKillTask(const char* pcParameterBuffer);
 static void kCPULoad(const char* pcParameterBuffer);
+static void kTestMutex( const char* pcParameterBuffer);
+static void kCreateThread( void );
+static void kTestThread( const char* pcParameter );
+static void kShowMatrix( const char* pcParameterBuffer);
 
 #endif /* CONSOLESHELL_H_ */

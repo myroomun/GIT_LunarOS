@@ -70,12 +70,17 @@
 
 // 태스크의 플래그
 #define TASK_FLAGS_ENDTASK		0x8000000000000000
+#define TASK_FLAGS_SYSTEM		0x4000000000000000
+#define TASK_FLAGS_PROCESS		0x2000000000000000
+#define TASK_FLAGS_THREAD		0x1000000000000000
 #define TASK_FLAGS_IDLE			0x0800000000000000
 
 // 함수 매크로
 #define GETPRIORITY( x )		( ( x ) & 0xFF )
 #define SETPRIORITY( x, priority )	( ( x ) = ( ( x ) & 0xFFFFFFFFFFFFFF00 ) | ( priority ) )
 #define GETTCBOFFSET( x )		( ( x ) & 0xFFFFFFFF )
+
+#define GETTCBFROMTHREADLINK( x )	( TCB* ) ( ( QWORD )( x ) - offsetof( TCB, stThreadLink) )
 
 // 구조체
 #pragma pack(push, 1)
@@ -90,6 +95,20 @@ typedef struct kTaskControlBlockStruct
 	LISTLINK stLink;
 
 	QWORD qwFlags;
+
+	// 프로세스 메모리 영역의 시작과 크기
+	void* pvMemoryAddress;
+	QWORD qwMemorySize;
+
+	// 아래는 자식 스레드 정보
+	LISTLINK stThreadLink;	// 스레드 연결링크
+
+	// 리스트 헤더
+	LIST stChildThreadList;
+
+	// 부모 프로세스의 아이디
+	QWORD qwParentProcessID;
+
 
 	CONTEXT stContext;
 
@@ -140,23 +159,23 @@ typedef struct kSchedulerStruct
 
 // 함수
 // 태스크 풀과 관련한 함수
-void kInitializeTCBPool( void );
-TCB* kAllocateTCB( void );
-void kFreeTCB( QWORD qwID );
-TCB* kCreateTask( QWORD qwFlags, QWORD qwEntryPointAddress );
-void kSetUpTask( TCB* pstTCB, QWORD qwFlags, QWORD qwEntryPointAddress, void* pvStackAddress, QWORD qwStackSize );
+static void kInitializeTCBPool( void );
+static TCB* kAllocateTCB( void );
+static void kFreeTCB( QWORD qwID );
+TCB* kCreateTask( QWORD qwFlags, void* pvMemoryAddress, QWORD qwMemorySize, QWORD qwEntryPointAddress );
+static void kSetUpTask( TCB* pstTCB, QWORD qwFlags, QWORD qwEntryPointAddress, void* pvStackAddress, QWORD qwStackSize );
 
 // 스케쥴러 관련
 void kInitializeScheduler( void );
 void kSetRunningTask( TCB* pstTask );
 TCB* kGetRunningTask( void );
-TCB* kGetNextTaskToRun( void );
-BOOL kAddTaskToReadyList( TCB* pstTask );
+static TCB* kGetNextTaskToRun( void );
+static BOOL kAddTaskToReadyList( TCB* pstTask );
 void kSchedule( void );
 BOOL kScheduleInInterrupt( void );
 void kDecreaseProcessorTime( void );
 BOOL kIsProcessorTimeExpired( void );
-TCB* kRemoveTaskFromReadyList( QWORD qwTaskID );
+static TCB* kRemoveTaskFromReadyList( QWORD qwTaskID );
 BOOL kChangePriority( QWORD qwID, BYTE bPriority );
 BOOL kEndTask( QWORD qwTaskID );
 void kExitTask( void );
@@ -165,6 +184,7 @@ int kGetTaskCount( void );
 TCB* kGetTCBInTCBPool( int iOffset );
 BOOL kIsTaskExist( QWORD qwID );
 QWORD kGetProcessorLoad( void );
+static TCB* kGetProcessByThread( TCB* pstThread );
 
 
 // 유휴 태스크 관련
