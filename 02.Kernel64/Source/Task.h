@@ -103,17 +103,24 @@ typedef struct kTaskControlBlockStruct
 	// 아래는 자식 스레드 정보
 	LISTLINK stThreadLink;	// 스레드 연결링크
 
-	// 리스트 헤더
-	LIST stChildThreadList;
-
 	// 부모 프로세스의 아이디
 	QWORD qwParentProcessID;
 
+	// FPU Context는 16의 배수로 정렬되어야 한다. 앞으로 추가할 데이터는 현재 라인 아래에
+	QWORD vqwFPUContext[ 512 / 8 ];
+
+	// 리스트 헤더
+	LIST stChildThreadList;
 
 	CONTEXT stContext;
 
 	void* pvStackAddress;
+
 	QWORD qwStackSize;
+
+	BOOL bFPUUsed;
+
+	char vcPadding[ 11 ];
 } TCB;
 
 // 태스크 풀 관리 스트럭쳐
@@ -153,6 +160,8 @@ typedef struct kSchedulerStruct
 	// 유휴 태스크가 사용한 시간
 	QWORD qwSpendProcessorTimeInIdleTask;
 
+	QWORD qwLastFPUUsedTaskID;
+
 } SCHEDULER;
 
 #pragma pack( pop )
@@ -190,5 +199,9 @@ static TCB* kGetProcessByThread( TCB* pstThread );
 // 유휴 태스크 관련
 void kIdleTask( void );
 void kHaltProcessorByLoad( void );
+
+// FPU 관련
+QWORD kGetLastFPUUsedTaskID( void );
+void kSetLastFPUUsedTaskID( QWORD qwTaskID );
 
 #endif /* TASK_H_ */

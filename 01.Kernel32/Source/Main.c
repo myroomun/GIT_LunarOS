@@ -9,10 +9,12 @@
 #include "Page.h"
 #include "ModeSwitch.h"
 
+
 void kPrintString( int, int, const char*);
 BOOL kInitializeKernel64Area(void);
 BOOL kIsMemoryEnough( void );
 void kCopyKernel64ImageTo2Mbyte(void);
+
 
 void Main()
 {

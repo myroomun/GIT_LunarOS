@@ -167,6 +167,8 @@ TCB* kCreateTask( QWORD qwFlags, void* pvMemoryAddress, QWORD qwMemorySize, QWOR
 
 	kInitializeList( &( pstTask->stChildThreadList ) );
 
+	pstTask->bFPUUsed = FALSE;
+
 	bPreviousFlag = kLockForSystemData();
 	kAddTaskToReadyList( pstTask );
 	kUnlockForSystemData();
@@ -205,6 +207,8 @@ void kInitializeScheduler( void )
 	//프로세스 사용률 계산 구조 초기화
 	gs_stScheduler.qwSpendProcessorTimeInIdleTask = 0;
 	gs_stScheduler.qwProcessLoad = 0;
+	// FPU를 최근에 사용한 태스크 아이디 Invalid 초기화
+	gs_stScheduler.qwLastFPUUsedTaskID = TASK_INVALIDID;
 }
 
 // 현재 수행중인 태스크를 설정
@@ -375,6 +379,16 @@ void kSchedule( void )
         gs_stScheduler.qwSpendProcessorTimeInIdleTask += TASK_PROCESSORTIME - gs_stScheduler.iProcessorTime;
     }
 
+    // 다음에 수행할 태스크가 FPU를 쓴 태스크가 아니라면 TS비트 설정 (7번 인터럽트가 발생할 수 있음)
+    if( gs_stScheduler.qwLastFPUUsedTaskID != pstNextTask->stLink.qwID )
+    {
+    	kSetTS();
+    }
+    else
+    {
+    	kClearTS();
+    }
+
     // 태스크 종료플래그가 설정된 경우 콘텍스트 저장 X, 대기리스트에 삽입
     if( pstRunningTask->qwFlags & TASK_FLAGS_ENDTASK )
     {
@@ -436,6 +450,16 @@ BOOL kScheduleInInterrupt( void )
 		kAddTaskToReadyList(pstRunningTask);
 	}
 	kUnlockForSystemData(bPreviousFlag);
+
+    // 다음에 수행할 태스크가 FPU를 쓴 태스크가 아니라면 TS비트 설정 (7번 인터럽트가 발생할 수 있음)
+    if( gs_stScheduler.qwLastFPUUsedTaskID != pstNextTask->stLink.qwID )
+    {
+    	kSetTS();
+    }
+    else
+    {
+    	kClearTS();
+    }
 
 	//아래부터는 공유자원이 아님
 
@@ -707,4 +731,14 @@ static TCB* kGetProcessByThread( TCB* pstThread )
 	}
 
 	return pstProcess;
+}
+
+QWORD kGetLastFPUUsedTaskID( void )
+{
+	return gs_stScheduler.qwLastFPUUsedTaskID;
+}
+
+void kSetLastFPUUsedTaskID( QWORD qwTaskID )
+{
+	gs_stScheduler.qwLastFPUUsedTaskID = qwTaskID;
 }

@@ -24,5 +24,10 @@ QWORD kReadTSC( void );
 void kSwitchContext( CONTEXT* pstCurrentContext, CONTEXT* pstNextCOntext );
 void kHlt( void );
 BOOL kTestAndSet( volatile BYTE* pbDestination, BYTE bCompare, BYTE bSource );
+void kInitializeFPU( void );
+void kSetFPUContext( void* pvFPUContext );
+void kLoadFPUContext( void* pvFPUContext );
+void kSetTS( void );
+void kClearTS( void );
 
 #endif /* ASSEMBLYUTILITY_H_ */

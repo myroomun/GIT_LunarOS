@@ -283,7 +283,7 @@ void kReverseString( char* pcBuffer )
 	}
 }
 
-int KSPrintf( char* pcBuffer, const char* pcFormatString, ... )
+int kSPrintf( char* pcBuffer, const char* pcFormatString, ... )
 {
 	va_list ap;
 	int iReturn;

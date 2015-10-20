@@ -6,6 +6,7 @@ global kInPortByte, kOutPortByte, kLoadGDTR, kLoadTR, kLoadIDTR
 global kEnableInterrupt, kDisableInterrupt, kReadRFLAGS
 global kReadTSC
 global kSwitchContext, kHlt, kTestAndSet
+global kInitializeFPU, kSaveFPUContext, kLoadFPUContext, kSetTS, kClearTS
 
 ; param : port
 ; ret : data (in rax)
@@ -213,3 +214,28 @@ SUCCESS:
 	mov rax, 0x01
 	ret
 
+;; FPU 관련 어셈블리 함수
+
+kInitializeFPU:
+	finit
+	ret
+
+kSaveFPUContext:
+	fxsave [rdi]
+	ret
+
+kLoadFPUContext:
+	fxrstor [rdi]
+	ret
+
+kSetTS:
+	push rax
+	mov rax, cr0
+	or rax, 0x08 ;; TS bit 1 설정
+	mov cr0, rax
+	pop rax
+	ret
+
+kClearTS:
+	clts
+	ret

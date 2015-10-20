@@ -13,6 +13,7 @@
 #include "ConsoleShell.h"
 #include "PIT.h"
 #include "Task.h"
+#include "DynamicMemory.h"
 
 void kPrintString( int iX, int iY, const char* pcString );
 
@@ -51,6 +52,11 @@ void Main( void )
 	kPrintf("TCB Pool And Scheduler Initialize...........[Pass]\n" );
 	iCursorY++;
 	kInitializeScheduler();
+
+	kPrintf("Dynamic Memory Initialize...................[Pass]\n");
+	iCursorY++;
+	kInitializeDynamicMemory();
+
 	// 1ms 당 인터럽트 발생
 	kInitializePIT( MSTOCOUNT(1), 1 );
 

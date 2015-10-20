@@ -48,9 +48,9 @@ kReadCPUID:
 
 ; kSwitchExecute64bitKernel(void)
 kSwitchAndExecute64bitKernel:
-	; cr4 의 PAE 를 1로 설정
+	; cr4 의 PAE 를 1로 설정, OSXMMEXCPT 비트, OSFXSR 비트를 1로 설정
 	mov eax, cr4
-	or eax, 0x20
+	or eax, 0x620
 	mov cr4, eax
 
 	; cr3에 PML4 넣기
@@ -67,8 +67,8 @@ kSwitchAndExecute64bitKernel:
 	; CR0 레지스터 :: 캐시 기능과 페이징 기능 활성화
 	; NW(Non-writethrough:29bit): disable(0) CD(Cache Disable:30bit) : disable(0) PG(Paging Enable:31bit) : enable(1)
 	mov eax, cr0
-	or eax, 0x80000000
-	xor eax, 0x60000000
+	or eax, 0xE000000E	; TS bit 1
+	xor eax, 0x60000004 ; 그 외 비트 초기화
 	mov cr0, eax
 
 	jmp 0x08:0x200000	; 2MB  어드레스로 이동

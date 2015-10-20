@@ -65,5 +65,11 @@ static void kTestMutex( const char* pcParameterBuffer);
 static void kCreateThread( void );
 static void kTestThread( const char* pcParameter );
 static void kShowMatrix( const char* pcParameterBuffer);
+static void kTestPIE( const char* pcParameterBuffer );
+static void kShowDynamicMemoryInformation( const char* pcParameterBuffer );
+static void kTestSequentialAllocation( const char* pcParameterBuffer );
+static void kTestRandomAllocation( const char* pcParameterBuffer );
+static void kRandomAllocationTask( void );
+
 
 #endif /* CONSOLESHELL_H_ */
