@@ -29,5 +29,7 @@ void kSetFPUContext( void* pvFPUContext );
 void kLoadFPUContext( void* pvFPUContext );
 void kSetTS( void );
 void kClearTS( void );
+WORD kInPortWort( WORD PORT );
+void kOutPortWord( WORD wPort, WORD wData );
 
 #endif /* ASSEMBLYUTILITY_H_ */

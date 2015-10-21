@@ -171,7 +171,7 @@ TCB* kCreateTask( QWORD qwFlags, void* pvMemoryAddress, QWORD qwMemorySize, QWOR
 
 	bPreviousFlag = kLockForSystemData();
 	kAddTaskToReadyList( pstTask );
-	kUnlockForSystemData();
+	kUnlockForSystemData(bPreviousFlag);
 
 	return pstTask;
 }

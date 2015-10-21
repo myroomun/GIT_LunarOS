@@ -2,7 +2,8 @@
 
 SECTION .text
 
-global kInPortByte, kOutPortByte, kLoadGDTR, kLoadTR, kLoadIDTR
+global kInPortByte, kOutPortByte, kInPortWord, kOutPortWord
+global kLoadGDTR, kLoadTR, kLoadIDTR
 global kEnableInterrupt, kDisableInterrupt, kReadRFLAGS
 global kReadTSC
 global kSwitchContext, kHlt, kTestAndSet
@@ -238,4 +239,26 @@ kSetTS:
 
 kClearTS:
 	clts
+	ret
+
+;; 파라미터 : 포트번호
+kInPortWord:
+	push rdx
+	mov rdx, rdi	;; 포트번호 이동
+	mov rax, 0		;; rax 레지스터 초기화
+	in ax, dx
+
+	pop rdx
+	ret
+;; 파라미터 : 포트, 데이터
+kOutPortWord:
+	push rdx
+	push rax
+
+	mov rdx, rdi
+	mov rax, rsi
+	out dx, ax ;; ax -> dx
+
+	pop rax
+	pop rdx
 	ret
