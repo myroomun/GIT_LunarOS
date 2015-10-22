@@ -14,6 +14,7 @@
 #include "PIT.h"
 #include "Task.h"
 #include "DynamicMemory.h"
+#include "FileSystem.h"
 
 void kPrintString( int iX, int iY, const char* pcString );
 
@@ -86,6 +87,17 @@ void Main( void )
 
 	kPrintf("HDD Initialize..............................[    ]" );
 	if(kInitializeHDD() == TRUE)
+	{
+		kSetCursor( 45, iCursorY++);
+		kPrintf("Pass\n");
+	}
+	else
+	{
+		kSetCursor( 45, iCursorY++);
+		kPrintf("Fail\n");
+	}
+	kPrintf("File System Initialize......................[    ]" );
+	if(kInitializeFileSystem() == TRUE)
 	{
 		kSetCursor( 45, iCursorY++);
 		kPrintf("Pass\n");

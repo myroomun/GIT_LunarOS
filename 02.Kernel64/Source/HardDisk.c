@@ -392,6 +392,7 @@ int kWriteHDDSector(BOOL bPrimary, BOOL bMaster, DWORD dwLBA, int iSectorCount, 
 		{
 			break;
 		}
+		kSleep( 1 );
 	}
 
 	// 참조 : Data Request 받은 후  Write 1sector
@@ -401,7 +402,7 @@ int kWriteHDDSector(BOOL bPrimary, BOOL bMaster, DWORD dwLBA, int iSectorCount, 
 		kSetHDDInterruptFlag(bPrimary, FALSE );
 		for( j = 0 ; j < 512 / 2 ; j++ )
 		{
-			kOutPortWord( wPortBase + HDD_PORT_INDEX_DATA, (( WORD* )pcBuffer[lReadCount++]));
+			kOutPortWord( wPortBase + HDD_PORT_INDEX_DATA, (( WORD* )pcBuffer)[lReadCount++]);
 		}
 		bStatus = kReadHDDStatus( bPrimary );
 		// 뜬금포 에러 발생시 종료

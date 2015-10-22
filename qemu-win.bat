@@ -1,1 +1,1 @@
-"C:\Program Files\qemu\qemu-system-x86_64.exe" -L . -m 4096 -fda "C:\Users\user\workspace\Lunar\Disk.img" -soundhw all -localtime -M pc
+"C:\Program Files\qemu\qemu-img" create HDD.img 20M
