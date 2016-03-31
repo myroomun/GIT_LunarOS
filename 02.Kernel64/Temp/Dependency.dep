@@ -42,4 +42,5 @@ Main.o: ../Source/Main.c ../Source/Types.h ../Source/Keyboard.h \
  ../Source/FileSystem.h ../Source/Synchronization.h ../Source/HardDisk.h
 FileSystem.o: ../Source/FileSystem.c ../Source/FileSystem.h \
  ../Source/Types.h ../Source/Synchronization.h ../Source/HardDisk.h \
- ../Source/DynamicMemory.h
+ ../Source/DynamicMemory.h ../Source/Task.h ../Source/List.h \
+ ../Source/Utility.h
