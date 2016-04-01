@@ -1,1 +1,1 @@
-"C:\Program Files\qemu\qemu-system-x86_64.exe" -L . -m 4096 -fda "C:\Users\user\workspace\Lunar\Disk.img" -hda "C:\Users\user\workspace\Lunar\HDD.img" -boot a -localtime -M pc
+"C:\Program Files\qemu\qemu-system-x86_64.exe" -L . -m 4096 -fda "C:\Users\user\workspace\Lunar\Disk.img" -boot a -localtime -M pc

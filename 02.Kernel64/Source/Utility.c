@@ -15,37 +15,89 @@ void kMemSet( void* pvDestination, BYTE bData, int iSize )
 {
 	int i;
 
-	for( i = 0 ; i < iSize ; i++ )
+	QWORD qwData;
+	int iRemainByteStartOffset;
+
+
+	qwData = 0;
+	// 8바이트로 byte * 8개 다 채움
+	for( i = 0 ; i < 8 ; i++ )
 	{
-		( (char*) pvDestination )[i] = bData;
+		qwData = (qwData << 8) | bData;
+	}
+
+	for( i = 0 ; i < (iSize/8) ; i++ )
+	{
+		( (QWORD*) pvDestination )[i] = bData;
+	}
+
+	// 끊긴데부터 시작
+	iRemainByteStartOffset = i*8;
+	for( i = 0 ; i < (iSize % 8) ; i++ )
+	{
+		( (char*) pvDestination ) [iRemainByteStartOffset++] = bData;
 	}
 }
 
 int kMemCpy( void* pvDestination, const void* pvSource, int iSize )
 {
 	int i;
+	int iRemainByteStartOffset;
 
-	for( i = 0 ; i < iSize ; i++ )
+
+	for( i = 0 ; i < (iSize/8) ; i++ )
 	{
-		( (char*) pvDestination )[i] = ( (char*) pvSource )[i];
+		( (QWORD*) pvDestination )[i] = ((QWORD*) pvSource)[i];
 	}
+
+	iRemainByteStartOffset = i*8;
+	for( i = 0 ; i < (iSize % 8) ; i++ )
+	{
+		( (char*) pvDestination ) [iRemainByteStartOffset] = ( (char*) pvSource ) [iRemainByteStartOffset];
+		iRemainByteStartOffset++;
+	}
+
 	return iSize;
 }
 
 int kMemCmp(const void* pvDestination, const void* pvSource, int iSize )
 {
-	int i;
-	char cTemp;
+    int i, j;
+    int iRemainByteStartOffset;
+    QWORD qwValue;
+    char cValue;
 
-	for( i = 0 ; i < iSize ; i++ )
-	{
-		cTemp = ( (char*) pvDestination )[i] - ( (char*) pvSource )[i];
-		if( cTemp != 0 )
-		{
-			return ( int ) cTemp;
-		}
-	}
-	return 0;
+    // 8 바이트씩 먼저 비교
+    for( i = 0 ; i < ( iSize / 8 ) ; i++ )
+    {
+        qwValue = ( ( QWORD* ) pvDestination )[ i ] - ( ( QWORD* ) pvSource )[ i ];
+
+        // 틀린 위치를 정확하게 찾아서 그 값을 반환
+        if( qwValue != 0 )
+        {
+            for( i = 0 ; i < 8 ; i++ )
+            {
+                if( ( ( qwValue >> ( i * 8 ) ) & 0xFF ) != 0 )
+                {
+                    return ( qwValue >> ( i * 8 ) ) & 0xFF;
+                }
+            }
+        }
+    }
+
+    // 8 바이트씩 채우고 남은 부분을 마무리
+    iRemainByteStartOffset = i * 8;
+    for( i = 0 ; i < ( iSize % 8 ) ; i++ )
+    {
+        cValue = ( ( char* ) pvDestination )[ iRemainByteStartOffset ] -
+            ( ( char* ) pvSource )[ iRemainByteStartOffset ];
+        if( cValue != 0 )
+        {
+            return cValue;
+        }
+        iRemainByteStartOffset++;
+    }
+    return 0;
 }
 
 BOOL kSetInterruptFlag( BOOL bEnableInterrupt )
